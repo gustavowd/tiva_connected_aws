@@ -347,7 +347,7 @@ int32_t SOCKETS_SetSockOpt(Socket_t xSocket,
 
 	case SOCKETS_SO_NONBLOCK:
 		/* A 0 timeout is wait forever. This timeout should be smaller??? */
-		xTimeout = 1000; //socketsconfigDEFAULT_RECV_TIMEOUT;
+		xTimeout = 100; //socketsconfigDEFAULT_RECV_TIMEOUT;
 		lStatus = lwip_setsockopt((int)pxContext->xSocket,
 			lLevel,
 			SO_RCVTIMEO,
@@ -356,6 +356,7 @@ int32_t SOCKETS_SetSockOpt(Socket_t xSocket,
 
 		if (lStatus == SOCKETS_ERROR_NONE)
 		{
+			xTimeout = 1000; //socketsconfigDEFAULT_SEND_TIMEOUT;
 			lStatus = lwip_setsockopt((int)pxContext->xSocket,
 				lLevel,
 				SO_SNDTIMEO,
