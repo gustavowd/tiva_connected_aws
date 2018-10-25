@@ -611,6 +611,7 @@ BaseType_t TLS_Connect( void * pvContext )
     return xResult;
 }
 
+/*-----------------------------------------------------------*/
 
 BaseType_t TLS_Recv( void * pvContext,
                      unsigned char * pucReadBuffer,
@@ -642,9 +643,6 @@ BaseType_t TLS_Recv( void * pvContext,
             }
             else if( MBEDTLS_ERR_SSL_WANT_READ != xResult )
             {
-                if (xResult == -11){
-                    break;
-                }
                 /* Hard error: invalidate the context and stop. */
                 prvFreeContext( pCtx );
                 break;
@@ -659,10 +657,6 @@ BaseType_t TLS_Recv( void * pvContext,
     if( 0 <= xResult )
     {
         xResult = ( BaseType_t ) xRead;
-    }else{
-        if (xRead != 0){
-            xResult = ( BaseType_t ) xRead;
-        }
     }
 
     return xResult;

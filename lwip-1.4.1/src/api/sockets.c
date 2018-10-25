@@ -616,11 +616,11 @@ lwip_recvfrom(int s, void *mem, size_t len, int flags,
         LWIP_DEBUGF(SOCKETS_DEBUG, ("lwip_recvfrom(%d): buf == NULL, error is \"%s\"!\n",
           s, lwip_strerr(err)));
         sock_set_errno(sock, err_to_errno(err));
-        if ((err == ERR_CLSD)) { // || (err == ERR_TIMEOUT)
+        if ((err == ERR_CLSD)) {
           return 0;
         } else {
             if ((err == ERR_TIMEOUT)) {
-                return -11;
+                return 0;
             }else{
                 return -1;
             }
