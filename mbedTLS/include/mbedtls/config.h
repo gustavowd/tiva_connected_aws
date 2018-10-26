@@ -1,10 +1,10 @@
-/** 
+/**
   *
   *  Portions COPYRIGHT 2016 STMicroelectronics
   *  Copyright (C) 2006-2015, ARM Limited, All Rights Reserved
   *
   ******************************************************************************
-  * @file    mbedtls_config.h 
+  * @file    mbedtls_config.h
   * @author  MCD Application Team
   * @version V1.2.1
   * @date    14-April-2017
@@ -37,7 +37,7 @@
   * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
   *
   ******************************************************************************
-  */ 
+  */
 #ifndef MBEDTLS_CONFIG_H
 #define MBEDTLS_CONFIG_H
 
@@ -607,7 +607,7 @@
  *      MBEDTLS_TLS_RSA_WITH_RC4_128_SHA
  *      MBEDTLS_TLS_RSA_WITH_RC4_128_MD5
  */
-//#define MBEDTLS_KEY_EXCHANGE_RSA_ENABLED
+#define MBEDTLS_KEY_EXCHANGE_RSA_ENABLED
 
 /**
  * \def MBEDTLS_KEY_EXCHANGE_DHE_RSA_ENABLED
@@ -1657,7 +1657,7 @@
  *
  * This module is used for testing (ssl_client/server).
  */
-//#define MBEDTLS_CERTS_C
+#define MBEDTLS_CERTS_C
 
 /**
  * \def MBEDTLS_CIPHER_C
@@ -1977,7 +1977,7 @@
  *
  * This module provides networking routines.
  */
-//#define MBEDTLS_NET_C
+#define MBEDTLS_NET_C
 
 /**
  * \def MBEDTLS_OID_C
@@ -2608,7 +2608,7 @@
 #endif
 
 /* uncomment the defines below to enable static memory allocation feature */
-#if 0 
+#if 0
 #define MBEDTLS_MEMORY_BUFFER_ALLOC_C
 #define MBEDTLS_PLATFORM_MEMORY
 #define MBEDTLS_DEBUG_C
