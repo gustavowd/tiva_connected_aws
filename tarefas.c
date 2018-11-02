@@ -20,7 +20,6 @@
 #include "driverlib/gpio.h"
 #include "driverlib/uart.h"
 #include "lwiplib.h"
-#include "locator.h"
 #include "sntp.h"
 #include "httpd.h"
 #include "random.h"
@@ -76,6 +75,49 @@ void System_Time(void *param){
 
 
 
+void exec(void *param)
+{
+	(void)param;
+
+	while(1)
+	{
+		vTaskDelay(5000);
+		vTaskSuspend(procId3);
+		vTaskDelay(5000);
+		vTaskResume(procId3);
+	}
+}
+
+
+// Declares a semaphore structure
+xSemaphoreHandle semaforo = NULL;
+
+void exec2(void *param)
+{
+    (void)param;
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);
+	GPIOPadConfigSet(GPIO_PORTN_BASE, GPIO_PIN_1, GPIO_STRENGTH_8MA_SC, GPIO_PIN_TYPE_STD);
+	GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, GPIO_PIN_1);
+
+	semaforo = xSemaphoreCreateBinary();
+
+    while(1)
+    {
+        GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, 0);
+        vTaskDelay(200);
+        xSemaphoreGive(semaforo);
+        GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1 , GPIO_PIN_1);
+        vTaskDelay(200);
+        xSemaphoreGive(semaforo);
+    }
+}
+
+
+
+
+
+
+
 
 void exec3(void *param)
 {
@@ -86,11 +128,19 @@ void exec3(void *param)
 	GPIOPadConfigSet(led->port_base, led->pin, GPIO_STRENGTH_8MA_SC, GPIO_PIN_TYPE_STD);
 	GPIOPinTypeGPIOOutput(led->port_base, led->pin);
 
+#if 0
+	while(semaforo == NULL){
+		vTaskDelay(1000);
+	}
+#endif
+
 	while(1)
 	{
 		GPIOPinWrite(led->port_base, led->pin, 0);
+		//xSemaphoreTake(semaforo,portMAX_DELAY);
 		vTaskDelay(200);
 		GPIOPinWrite(led->port_base, led->pin, 1);
+		//xSemaphoreTake(semaforo,portMAX_DELAY);
 		vTaskDelay(200);
 	}
 }
@@ -270,6 +320,132 @@ void UARTPutString(uint32_t ui32Base, char *string){
 
 
 
+// Declares a queue structure for the KEYB
+xQueueHandle qKEYB;
+
+// Declares a semaphore structure for the KEYB
+xSemaphoreHandle sKEYB;
+
+
+void Keyboard_Handler(void *param){
+   // task setup
+   unsigned char  key      = NO_KEY;
+   unsigned int   read = 0;
+
+   (void)param;
+
+    sKEYB = xSemaphoreCreateBinary();
+
+    if( sKEYB == NULL ){
+        /* There was insufficient FreeRTOS heap available for the semaphore to
+        be created successfully. */
+        vTaskSuspend(NULL);
+    }
+    else{
+        qKEYB = xQueueCreate(128, sizeof(char));
+
+        if( qKEYB == NULL ){
+            /* There was insufficient FreeRTOS heap available for the queue to
+            be created successfully. */
+            vTaskSuspend(NULL);
+        }else{
+            ButtonsInit();
+        }
+    }
+
+   // task main loop
+   for (;;){
+      // Wait for a keyboard interrupt
+      xSemaphoreTake(sKEYB,portMAX_DELAY);
+      vTaskDelay(50);
+
+      read = MAP_GPIOPinRead(BUTTONS_GPIO_BASE, ALL_BUTTONS);
+
+      // Find out which key was pressed
+      key = (unsigned char)read;
+
+      // Copy the key to the keyboard buffer
+      if(key != NO_KEY){
+          xQueueSendToBack(qKEYB, &key,portMAX_DELAY);
+      }
+
+      key = NO_KEY;
+      vTaskDelay(50);
+      // Enable interrupt to the next key detection
+      MAP_GPIOIntEnable(BUTTONS_GPIO_BASE, ALL_BUTTONS);
+   }
+}
+
+
+
+void Keyb_Task(void *param)
+{
+    uint8_t key = 0;
+    char buffer[768];
+
+    (void)param;
+
+    while( qKEYB == NULL ){
+        vTaskDelay(100);
+    }
+
+    // Limpa a tela
+    UARTPutString(UART0_BASE, "\033[2J\033[H");
+
+    while(1){
+        if(xQueueReceive(qKEYB, &key, portMAX_DELAY) == pdTRUE){
+            switch(key){
+                case SW1_KEY:
+                    // Block LED RGB task
+                    UARTPutString(UART0_BASE, "Botão SW1 pressionado!\n\r");
+                    UARTPutString(UART0_BASE, "\n\r");
+                    break;
+
+                case SW2_KEY:
+                    // UnBlock LED RGB task
+                    UARTPutString(UART0_BASE, "Botão SW2 pressionado!\n\r");
+                    UARTPutString(UART0_BASE, "\n\r");
+                    UARTPutString(UART0_BASE, "Name                 State  Priority  Stack  Number\n\r");
+                    UARTPutString(UART0_BASE, "*************************************************************\n\r");
+                    vTaskList(buffer);
+                    UARTPutString(UART0_BASE, buffer);
+                    UARTPutString(UART0_BASE, "\n\r");
+                    break;
+
+                case BOTH_KEY:
+                    UARTPutString(UART0_BASE, "Ambos os botões pressionados!\n\r");
+                    UARTPutString(UART0_BASE, "\n\r");
+                    #if 1
+                    UARTPutString(UART0_BASE, "Name                  Abs Time      % Time\n\r");
+                    UARTPutString(UART0_BASE, "****************************************************\n\r");
+                    vTaskGetRunTimeStats(buffer);
+                    UARTPutString(UART0_BASE, buffer);
+                    UARTPutString(UART0_BASE, "\n\r");
+                    #endif
+                    break;
+
+                default:
+                    break;
+            }
+        }
+    }
+}
+
+
+void ButtonsHandler(void){
+    signed portBASE_TYPE pxHigherPriorityTaskWoken = pdFALSE;
+
+    MAP_GPIOIntClear(BUTTONS_GPIO_BASE, ALL_BUTTONS);
+    MAP_GPIOIntDisable(BUTTONS_GPIO_BASE, ALL_BUTTONS);
+
+    // Call the keyboard analysis task
+    xSemaphoreGiveFromISR(sKEYB, &pxHigherPriorityTaskWoken);
+
+    if (pxHigherPriorityTaskWoken == pdTRUE){
+        portYIELD();
+    }
+}
+
 //*****************************************************************************
 //
 // Display an lwIP type IP Address.
@@ -411,15 +587,16 @@ uint32_t g_ui32SystemTimeMS = 0;
 #include "aws_system_init.h"
 #include "aws_dev_mode_key_provisioning.h"
 
+int utfpr_auth(void);
+
 void UpLwIP(void *param)
 {
     uint32_t ui32User0, ui32User1;
     //uint32_t ui32Loop;
     uint8_t pui8MACArray[8];
     (void)param;
-    //
+
     // Configure the device pins.
-    //
     PinoutSet(true, false);
 
     // Adiciona entropia - substituir por conversor A/D
@@ -428,49 +605,30 @@ void UpLwIP(void *param)
     vTaskDelay(1500);
     UARTPutString(UART0_BASE, "Ethernet lwIP example\n\r");
 
-    //
-    // Configure Port N1 for as an output for the animation LED.
-    //
-    //MAP_GPIOPinTypeGPIOOutput(GPIO_PORTN_BASE, GPIO_PIN_1);
-
-    //
-    // Initialize LED to OFF (0)
-    //
-    //MAP_GPIOPinWrite(GPIO_PORTN_BASE, GPIO_PIN_1, ~GPIO_PIN_1);
-
-    //
     // Configure the hardware MAC address for Ethernet Controller filtering of
     // incoming packets.  The MAC address will be stored in the non-volatile
     // USER0 and USER1 registers.
-    //
-    ui32User0 = 0xa0b0c0d0;
-    ui32User1 = 0xa0b0c0d0;
+    ui32User0 = 0x0000001a;
+    ui32User1 = 0xb60318cc;
 
-    MAP_FlashUserSet(ui32User0, ui32User1);
+    //MAP_FlashUserSet(ui32User0, ui32User1);
     MAP_FlashUserGet(&ui32User0, &ui32User1);
-    if((ui32User0 == 0xffffffff) || (ui32User1 == 0xffffffff))
-    {
-        //
+    if((ui32User0 == 0xffffffff) || (ui32User1 == 0xffffffff)){
         // We should never get here.  This is an error if the MAC address has
         // not been programmed into the device.  Exit the program.
         // Let the user know there is no MAC address
-        //
         UARTPutString(UART0_BASE, "No MAC programmed!\n\r");
         while(1)
         {
         }
     }
 
-    //
     // Tell the user what we are doing just now.
-    //
     UARTPutString(UART0_BASE, "Waiting for IP.\n\r");
 
-    //
     // Convert the 24/24 split MAC address from NV ram into a 32/16 split MAC
     // address needed to program the hardware registers, then program the MAC
     // address into the Ethernet Controller registers.
-    //
     pui8MACArray[0] = ((ui32User0 >>  0) & 0xff);
     pui8MACArray[1] = ((ui32User0 >>  8) & 0xff);
     pui8MACArray[2] = ((ui32User0 >> 16) & 0xff);
@@ -478,39 +636,50 @@ void UpLwIP(void *param)
     pui8MACArray[4] = ((ui32User1 >>  8) & 0xff);
     pui8MACArray[5] = ((ui32User1 >> 16) & 0xff);
 
-    //
     // Initialize the lwIP library, using DHCP.
-    //
     lwIPInit(configCPU_CLOCK_HZ, pui8MACArray, 0, 0, 0, IPADDR_USE_DHCP);
 
-    //
-    // Setup the device locator service.
-    //
-    LocatorInit();
-    LocatorMACAddrSet(pui8MACArray);
-    LocatorAppTitleSet("FreeRTOS running on EK-TM4C1294XL!\n\r");
-
-    //
     // Set the interrupt priorities.  We set the SysTick interrupt to a higher
     // priority than the Ethernet interrupt to ensure that the file system
     // tick is processed if SysTick occurs while the Ethernet handler is being
     // processed.  This is very likely since all the TCP/IP and HTTP work is
     // done in the context of the Ethernet interrupt.
-    //
-
     while(lwip_link_up != pdTRUE)
     {
         vTaskDelay(1000);
     }
 
-    //
+#if 0
+    // UTFPR login
+    while(utfpr_auth() != pdTRUE){
+        vTaskDelay(2000);
+    }
+#endif
+
     // Initialize a sample httpd server.
-    //
     httpd_init();
 
     // Inicia cliente SNTP
     sntp_init();
 
+    //sys_thread_new("LwIP TCP client", SocketTCPClient, NULL, 1280, 4);
+
+#if 0
+    sys_thread_new("LwIP SMTP client", send_mail_task, NULL, 2048, 5);
+#endif
+
+#if 0
+    uint8_t ret = 0;
+    do
+    {
+        ret = InitSD(VERBOSE_ON);
+        if (ret != SD_OK)
+        {
+            vTaskDelay(500);
+        }
+    }
+    while(ret != SD_OK);
+#endif
 
     /* A simple example to demonstrate key and certificate provisioning in
      * flash using PKCS#11 interface. This should be replaced
@@ -520,19 +689,49 @@ void UpLwIP(void *param)
     vDevModeKeyProvisioning();
 
     /* Initialize the AWS Libraries system. */
-    if ( SYSTEM_Init() == pdPASS )
-    {
+    if ( SYSTEM_Init() == pdPASS ){
         DEMO_RUNNER_RunDemos();
     }
 
-    //
     // Loop forever.  All the work is done in the created tasks
-    //
-    while(1)
-    {
+    while(1){
         // Delay ou pode inclusive apagar a tarefa
         vTaskDelay(10000);
     }
 
+}
+
+
+void SD_Task(void *param)
+{
+    uint8_t ret = 0;
+    uint8_t name[256]; //vetor para a leitura dos nomes dos arquivos
+    do
+    {
+        ret = InitSD(VERBOSE_ON);
+        if (ret != SD_OK)
+        {
+            vTaskDelay(5000);
+        }
+    }
+    while(ret != SD_OK);
+
+    name[0]=0;
+
+    vTaskDelay(3000);
+    ListFiles(name);
+
+    //(void)ReadFile("atualiza.txt", VERBOSE_ON);
+    //(void)UpdateFile("atualiza.txt", "Modificar essa string\r\n", "Essa é a nova string\r\n", 0, VERBOSE_ON);
+    //(void)ReadFile("atualiza.txt", VERBOSE_ON);
+
+    vTaskDelay(3000);
+    while(1)
+    {
+        //(void)ReadFile("teste.txt", VERBOSE_OFF);
+        //(void)WriteUptimeLog(VERBOSE_ON);
+        //(void)ReadFile("uptime.txt", VERBOSE_ON);
+        vTaskDelay(5000);
+    }
 }
 
